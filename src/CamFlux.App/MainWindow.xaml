@@ -1,0 +1,196 @@
+<Window x:Class="CamFlux.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="CamFlux" Width="1120" Height="760" MinWidth="790" MinHeight="610"
+    Background="#EEF2F6" Foreground="#182638" FontFamily="Segoe UI" FontSize="13"
+    WindowStartupLocation="CenterScreen" Loaded="OnLoaded" Closing="OnClosing">
+    <Window.Resources>
+        <SolidColorBrush x:Key="SubtleText" Color="#42576D"/>
+        <SolidColorBrush x:Key="BorderColor" Color="#C9D4E0"/>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="11,5"/>
+            <Setter Property="Margin" Value="0,0,7,5"/>
+            <Setter Property="MinHeight" Value="29"/>
+        </Style>
+        <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#185D8C"/>
+            <Setter Property="BorderBrush" Value="#185D8C"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="#536373"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="5,3"/>
+            <Setter Property="MinHeight" Value="26"/>
+        </Style>
+        <Style TargetType="PasswordBox">
+            <Setter Property="Padding" Value="5,3"/>
+            <Setter Property="MinHeight" Value="26"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Padding" Value="5,3"/>
+            <Setter Property="MinHeight" Value="26"/>
+        </Style>
+        <Style x:Key="Field" TargetType="StackPanel">
+            <Setter Property="Margin" Value="0,0,10,8"/>
+        </Style>
+        <Style x:Key="Caption" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource SubtleText}"/>
+            <Setter Property="Margin" Value="0,0,0,3"/>
+        </Style>
+        <Style x:Key="Panel" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderColor}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,9"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+    </Window.Resources>
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="#14293D" Padding="18,10">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{DynamicResource Language}" Foreground="White" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox Width="72" AutomationProperties.Name="{DynamicResource Language}"
+                        ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}"/>
+                </StackPanel>
+                <TextBlock Text="CamFlux" FontWeight="SemiBold" FontSize="24" Foreground="White"/>
+            </DockPanel>
+        </Border>
+        <Grid Margin="14,10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="122"/>
+            </Grid.RowDefinitions>
+            <Border Style="{StaticResource Panel}">
+                <WrapPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                        <TextBlock Text="{DynamicResource Profiles}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox Width="145" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                            AutomationProperties.Name="{DynamicResource Profiles}" Margin="0,0,6,3"/>
+                        <Button Content="{DynamicResource Load}" Command="{Binding Load}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBox Width="145" Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged}"
+                            AutomationProperties.Name="{DynamicResource ProfileName}" Margin="0,0,6,3"/>
+                        <Button Content="{DynamicResource Save}" Command="{Binding Save}"/>
+                    </StackPanel>
+                </WrapPanel>
+            </Border>
+            <Border Grid.Row="1" Style="{StaticResource Panel}">
+                <StackPanel>
+                    <TextBlock Text="{DynamicResource Server}" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                    <WrapPanel>
+                        <StackPanel Width="180" Style="{StaticResource Field}">
+                            <TextBlock Text="{DynamicResource Host}" Style="{StaticResource Caption}"/>
+                            <TextBox IsEnabled="{Binding CanEditEndpoint}" Text="{Binding Host, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Host}"/>
+                        </StackPanel>
+                        <StackPanel Width="75" Style="{StaticResource Field}">
+                            <TextBlock Text="{DynamicResource Port}" Style="{StaticResource Caption}"/>
+                            <TextBox IsEnabled="{Binding CanEditEndpoint}" Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Port}"/>
+                        </StackPanel>
+                        <StackPanel Width="105" Style="{StaticResource Field}">
+                            <TextBlock Text="{DynamicResource Latency}" Style="{StaticResource Caption}"/>
+                            <TextBox IsEnabled="{Binding CanEditEndpoint}" Text="{Binding Latency, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Latency}"/>
+                        </StackPanel>
+                        <StackPanel Width="154" Style="{StaticResource Field}">
+                            <TextBlock Text="{DynamicResource PublishUser}" Style="{StaticResource Caption}"/>
+                            <TextBox IsEnabled="{Binding CanEditEndpoint}" Text="{Binding PublishUser, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource PublishUser}"/>
+                        </StackPanel>
+                        <StackPanel Width="140" Style="{StaticResource Field}">
+                            <TextBlock Text="{DynamicResource PublishPassword}" Style="{StaticResource Caption}"/>
+                            <PasswordBox x:Name="Publishing" IsEnabled="{Binding CanEditEndpoint}" PasswordChanged="OnPublishingChanged"
+                                AutomationProperties.Name="{DynamicResource PublishPassword}"/>
+                        </StackPanel>
+                        <StackPanel Width="154" Style="{StaticResource Field}">
+                            <TextBlock Text="{DynamicResource ReaderUser}" Style="{StaticResource Caption}"/>
+                            <TextBox TextChanged="OnReaderUserChanged" AutomationProperties.Name="{DynamicResource ReaderUser}"/>
+                        </StackPanel>
+                        <StackPanel Width="140" Style="{StaticResource Field}">
+                            <TextBlock Text="{DynamicResource ReaderPassword}" Style="{StaticResource Caption}"/>
+                            <PasswordBox PasswordChanged="OnReaderChanged" AutomationProperties.Name="{DynamicResource ReaderPassword}"/>
+                        </StackPanel>
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+            <StackPanel Grid.Row="2">
+                <WrapPanel>
+                    <TextBlock Text="{DynamicResource Cameras}" FontSize="17" FontWeight="SemiBold" Margin="0,2,12,5"/>
+                    <Button Content="{DynamicResource Discover}" Command="{Binding Discover}"/>
+                    <Button Content="{DynamicResource Browse}" Command="{Binding Browse}"/>
+                    <Button Content="{DynamicResource StartAll}" Command="{Binding Start}" Style="{StaticResource Primary}"/>
+                    <Button Content="{DynamicResource StopAll}" Command="{Binding Stop}"/>
+                    <TextBlock Text="{Binding Bandwidth}" FontWeight="SemiBold" Margin="4,6,0,5"/>
+                </WrapPanel>
+                <TextBlock Text="{Binding Notice}" Foreground="{StaticResource SubtleText}" TextWrapping="Wrap" Margin="0,0,0,7"/>
+            </StackPanel>
+            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding Cameras}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource Panel}">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,6">
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" FontWeight="SemiBold"
+                                            Foreground="#185D8C" Margin="8,0,0,0"/>
+                                        <TextBlock Text="{Binding Name}" ToolTip="{Binding DeviceId}" TextTrimming="CharacterEllipsis"
+                                            FontWeight="SemiBold"/>
+                                    </DockPanel>
+                                    <WrapPanel IsEnabled="{Binding Editable}">
+                                        <CheckBox IsChecked="{Binding Enabled}" Content="{DynamicResource Enabled}"
+                                            VerticalAlignment="Center" Margin="0,0,12,6"/>
+                                        <StackPanel Width="142" Style="{StaticResource Field}">
+                                            <TextBlock Text="{DynamicResource Path}" Style="{StaticResource Caption}"/>
+                                            <TextBox Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"
+                                                AutomationProperties.Name="{DynamicResource Path}"/>
+                                        </StackPanel>
+                                        <StackPanel Width="228" Style="{StaticResource Field}">
+                                            <TextBlock Text="{DynamicResource Mode}" Style="{StaticResource Caption}"/>
+                                            <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}"
+                                                AutomationProperties.Name="{DynamicResource Mode}"/>
+                                        </StackPanel>
+                                        <Button Content="{DynamicResource Probe}" CommandParameter="{Binding}" VerticalAlignment="Bottom"
+                                            Command="{Binding DataContext.Probe, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <StackPanel Width="94" Style="{StaticResource Field}">
+                                            <TextBlock Text="{DynamicResource Bitrate}" Style="{StaticResource Caption}"/>
+                                            <TextBox Text="{Binding Bitrate, UpdateSourceTrigger=PropertyChanged}"
+                                                AutomationProperties.Name="{DynamicResource Bitrate}"/>
+                                        </StackPanel>
+                                        <StackPanel Width="190" Style="{StaticResource Field}">
+                                            <TextBlock Text="{DynamicResource Audio}" Style="{StaticResource Caption}"/>
+                                            <ComboBox ItemsSource="{Binding DataContext.AudioDevices, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                SelectedItem="{Binding Audio}" AutomationProperties.Name="{DynamicResource Audio}"/>
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <WrapPanel>
+                                        <Button Content="{DynamicResource Start}" CommandParameter="{Binding}" Style="{StaticResource Primary}"
+                                            Command="{Binding DataContext.Start, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <Button Content="{DynamicResource Stop}" CommandParameter="{Binding}"
+                                            Command="{Binding DataContext.Stop, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <Button Content="{DynamicResource Copy}" CommandParameter="{Binding}"
+                                            Command="{Binding DataContext.Copy, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <TextBlock Text="{DynamicResource Frames}" VerticalAlignment="Center" Margin="6,0,5,5"/>
+                                        <TextBlock Text="{Binding Frames}" VerticalAlignment="Center" Margin="0,0,0,5"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+            <DockPanel Grid.Row="4">
+                <TextBlock DockPanel.Dock="Top" Text="{DynamicResource Logs}" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <TextBox Text="{Binding Diagnostics, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas"
+                    AutomationProperties.Name="{DynamicResource Logs}" VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Auto" Background="#F9FBFD" TextChanged="OnLogChanged"/>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>

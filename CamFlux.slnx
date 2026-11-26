@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CamFlux.App/CamFlux.App.csproj" />
+    <Project Path="src/CamFlux.Core/CamFlux.Core.csproj" />
+    <Project Path="src/CamFlux.Infrastructure/CamFlux.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CamFlux.Tests/CamFlux.Tests.csproj" />
+  </Folder>
+</Solution>
