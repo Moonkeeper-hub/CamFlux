@@ -1,0 +1,5 @@
+# MediaMTX
+Target tested server version: 1.21.4 (single-stream baseline; multi-stream setup requires testing). Expose UDP 8890. Use internal authentication, separate publish/read users, explicit path permissions and paths. Disable recording and publisher override. Example path names: east, south, west, north, table. Use placeholders only.
+Publisher: srt://SERVER:8890?mode=caller&latency=500000&streamid=publish:east:PUBLISH_USER:PUBLISH_PASSWORD&pkt_size=1316
+Reader: srt://SERVER:8890?mode=caller&latency=500000&streamid=read:east:READ_USER:READ_PASSWORD
+OBS: Media Source, local file unchecked, input URL, optional mpegts format. FFmpeg latency is microseconds; 500000 = 500 ms. Each SRT leg negotiates its own latency. Do not assume equal latency synchronizes cameras. For five 2.5 Mbps streams allow at least 16.25 Mbps upload plus audio and protocol overhead; measure actual sustained throughput. Avoid simultaneous screen sharing during tests.
