@@ -27,3 +27,11 @@ Record the Windows version, camera models and connection topology, capture modes
 7. Close the app during streaming and during retry. Confirm in Task Manager that its FFmpeg processes exit and verify that both cameras can be opened by another app. Also close the window during first-run setup and confirm that startup work cancels.
 
 Windows CI exercises the build and unit tests and creates the portable package. Physical cameras, DirectShow driver timing, live MediaMTX and OBS reception, and the 60-minute run require manual verification.
+
+## Regression checks for mixed camera setups
+
+1. Save a profile with two cameras and a microphone, then unplug one camera and the microphone. Load the profile. Verify the saved choices remain visible and the affected rows explain which devices are missing. Select **Video only** where appropriate, or reconnect the devices and scan again.
+2. Enable a valid row alongside a row with an invalid mode, a duplicate path or an unavailable device. Select **Start enabled**. Verify the valid stream starts and the affected rows show their own errors. Repeat with another stream already running and verify that its device, path and microphone stay reserved.
+3. Select a capture mode marked as a candidate and verify it on the actual camera. These rates come from a range reported for one resolution and format. If the driver rejects one, inspect the affected row and diagnostics, select a driver-reported mode and retry that row.
+4. Compare the per-row local FFmpeg FPS, bitrate, processing speed, duplicate frames and dropped frames against FFmpeg's output. Confirm reception in OBS separately. Local dropped frames are a frame counter and do not measure loss of SRT packets.
+5. Force a capture error while another camera is publishing. Confirm the failed row remains editable when its retry limit is exhausted, preserves useful error details and can be restarted independently. Verify no publishing or reader secrets appear in diagnostics.

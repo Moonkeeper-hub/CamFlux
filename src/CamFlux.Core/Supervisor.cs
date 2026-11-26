@@ -3,16 +3,18 @@ namespace CamFlux.Core;
 public enum StreamState { Idle, Starting, Running, Retrying, Stopping, Failed }
 public interface IStreamRunner
 {
-    Task<int> RunAsync(string[] arguments, Action<string> progress, Action<string> diagnostic, CancellationToken cancellation);
+    Task<int> RunAsync(string[] arguments, Action<StreamProgress> progress, Action<string> diagnostic, CancellationToken cancellation);
 }
 
-public sealed class Supervisor(IStreamRunner runner, Func<TimeSpan, CancellationToken, Task>? delay = null)
+public sealed class Supervisor(IStreamRunner runner, Func<TimeSpan, CancellationToken, Task>? delay = null, TimeProvider? timeProvider = null)
 {
     private static readonly TimeSpan StablePeriod = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan MaximumProgressGap = TimeSpan.FromSeconds(5);
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private readonly Func<TimeSpan, CancellationToken, Task> wait = delay ?? Task.Delay;
     public const int RetryLimit = 5;
 
-    public async Task RunAsync(string[] arguments, Action<StreamState> state, Action<string> progress,
+    public async Task RunAsync(string[] arguments, Action<StreamState> state, Action<StreamProgress> progress,
         Action<string> diagnostic, CancellationToken cancellation)
     {
         var failures = 0;
@@ -22,15 +24,24 @@ public sealed class Supervisor(IStreamRunner runner, Func<TimeSpan, Cancellation
             {
                 cancellation.ThrowIfCancellationRequested();
                 state(StreamState.Starting);
-                long? firstProgress = null;
+                long lastFrame = 0;
+                long? advancingSince = null;
+                long lastAdvance = 0;
                 try
                 {
                     var code = await runner.RunAsync(arguments, value =>
                     {
-                        if (firstProgress is null)
+                        if (value.Frame is long frame && frame > lastFrame)
                         {
-                            firstProgress = System.Diagnostics.Stopwatch.GetTimestamp();
-                            state(StreamState.Running);
+                            var now = clock.GetTimestamp();
+                            if (lastFrame == 0)
+                                state(StreamState.Running);
+                            if (advancingSince is null || clock.GetElapsedTime(lastAdvance, now) > MaximumProgressGap)
+                                advancingSince = now;
+                            lastFrame = frame;
+                            lastAdvance = now;
+                            if (clock.GetElapsedTime(advancingSince.Value, now) >= StablePeriod)
+                                failures = 0;
                         }
                         progress(value);
                     }, diagnostic, cancellation).ConfigureAwait(false);
@@ -42,8 +53,6 @@ public sealed class Supervisor(IStreamRunner runner, Func<TimeSpan, Cancellation
                 }
 
                 cancellation.ThrowIfCancellationRequested();
-                if (firstProgress is long started && System.Diagnostics.Stopwatch.GetElapsedTime(started) >= StablePeriod)
-                    failures = 0;
                 if (failures == RetryLimit)
                 {
                     state(StreamState.Failed);

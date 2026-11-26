@@ -30,6 +30,6 @@ public sealed class DirectShowTests
             """);
 
         Assert.Equal([new(1920, 1080, "29.97", "mjpeg", true), new(640, 480, "30", "yuyv422", false),
-            new(640, 480, "5", "yuyv422", false)], modes);
+            new(640, 480, "25", "yuyv422", false, true), new(640, 480, "20", "yuyv422", false, true), new(640, 480, "15", "yuyv422", false, true), new(640, 480, "5", "yuyv422", false)], modes);
     }
 }

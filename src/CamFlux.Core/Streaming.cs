@@ -10,7 +10,7 @@ public sealed record Device(string Name, string Id, bool IsAudio)
 {
     public override string ToString() => Name;
 }
-public sealed record CaptureMode(int Width, int Height, string Fps, string Format, bool IsCodec)
+public sealed record CaptureMode(int Width, int Height, string Fps, string Format, bool IsCodec, bool IsInferred = false)
 {
     public override string ToString() => $"{Width} × {Height}  ·  {Fps} fps  ·  {Format}";
 }

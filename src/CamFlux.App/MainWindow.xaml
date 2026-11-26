@@ -5,6 +5,7 @@
     Background="#EEF2F6" Foreground="#182638" FontFamily="Segoe UI" FontSize="13"
     WindowStartupLocation="CenterScreen" Loaded="OnLoaded" Closing="OnClosing">
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="FlagVisibility"/>
         <SolidColorBrush x:Key="SubtleText" Color="#42576D"/>
         <SolidColorBrush x:Key="BorderColor" Color="#C9D4E0"/>
         <Style TargetType="Button">
@@ -138,7 +139,7 @@
                             <Border Style="{StaticResource Panel}">
                                 <StackPanel>
                                     <DockPanel Margin="0,0,0,6">
-                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" FontWeight="SemiBold"
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" TextWrapping="Wrap" MaxWidth="400" FontWeight="SemiBold"
                                             Foreground="#185D8C" Margin="8,0,0,0"/>
                                         <TextBlock Text="{Binding Name}" ToolTip="{Binding DeviceId}" TextTrimming="CharacterEllipsis"
                                             FontWeight="SemiBold"/>
@@ -154,7 +155,17 @@
                                         <StackPanel Width="228" Style="{StaticResource Field}">
                                             <TextBlock Text="{DynamicResource Mode}" Style="{StaticResource Caption}"/>
                                             <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}"
-                                                AutomationProperties.Name="{DynamicResource Mode}"/>
+                                                AutomationProperties.Name="{DynamicResource Mode}" ToolTip="{DynamicResource ModeHint}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Margin="0,0,5,0" Text="{DynamicResource Candidate}"
+                                                                Visibility="{Binding IsInferred, Converter={StaticResource FlagVisibility}}"/>
+                                                            <TextBlock Text="{Binding}"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
                                         </StackPanel>
                                         <Button Content="{DynamicResource Probe}" CommandParameter="{Binding}" VerticalAlignment="Bottom"
                                             Command="{Binding DataContext.Probe, RelativeSource={RelativeSource AncestorType=Window}}"/>
@@ -165,7 +176,7 @@
                                         </StackPanel>
                                         <StackPanel Width="190" Style="{StaticResource Field}">
                                             <TextBlock Text="{DynamicResource Audio}" Style="{StaticResource Caption}"/>
-                                            <ComboBox ItemsSource="{Binding DataContext.AudioDevices, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            <ComboBox ToolTip="{Binding Audio.Name}" ItemsSource="{Binding DataContext.AudioDevices, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 SelectedItem="{Binding Audio}" AutomationProperties.Name="{DynamicResource Audio}"/>
                                         </StackPanel>
                                     </WrapPanel>
@@ -176,9 +187,20 @@
                                             Command="{Binding DataContext.Stop, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                         <Button Content="{DynamicResource Copy}" CommandParameter="{Binding}"
                                             Command="{Binding DataContext.Copy, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                                        <TextBlock Text="{DynamicResource Frames}" VerticalAlignment="Center" Margin="6,0,5,5"/>
-                                        <TextBlock Text="{Binding Frames}" VerticalAlignment="Center" Margin="0,0,0,5"/>
                                     </WrapPanel>
+                                    <TextBlock Text="{Binding FailureDetail}" TextWrapping="Wrap" Foreground="#823427">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding FailureDetail}" Value="">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding Metrics}" TextWrapping="Wrap" Foreground="{StaticResource SubtleText}"
+                                        ToolTip="{DynamicResource MetricsHint}"/>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>

@@ -53,9 +53,10 @@ internal sealed class CameraRow : Observable
     private CaptureMode? mode;
     private AudioChoice? audio;
     private StreamState state;
-    private string frames = "—";
+    private string metrics = "";
     private IReadOnlyList<CaptureMode> modes;
     private string status = "";
+    private string failureDetail = "";
 
     public CameraRow(Camera camera)
     {
@@ -80,7 +81,11 @@ internal sealed class CameraRow : Observable
     public IReadOnlyList<CaptureMode> Modes { get => modes; set => Set(ref modes, value); }
     public StreamState State { get => state; set => Set(ref state, value); }
     public string Status { get => status; set => Set(ref status, value); }
-    public string Frames { get => frames; set => Set(ref frames, value); }
+    public string FailureDetail { get => failureDetail; set => Set(ref failureDetail, value); }
+    public string? LastError { get; set; }
+    public string Metrics { get => metrics; set => Set(ref metrics, value); }
+    public StreamProgress? Progress { get; set; }
+    public string? ValidationError { get; set; }
     public bool Editable => Operation is null;
     public CancellationTokenSource? Operation { get; private set; }
     public Task? Completion { get; set; }
@@ -102,6 +107,7 @@ internal sealed class MainViewModel : Observable
     private readonly ProfileStore store;
     private readonly Queue<(DateTime Time, string? Path, string Code)> log = new();
     private readonly HashSet<string> attached = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> attachedAudio = new(StringComparer.OrdinalIgnoreCase);
     private Ffmpeg? ffmpeg;
     private string? ffmpegPath;
     private Task? work;
@@ -123,13 +129,14 @@ internal sealed class MainViewModel : Observable
         store = new ProfileStore(Path.Combine(root, "profiles"));
         RefreshProfiles();
         ReloadText();
-        Discover = Command(_ => InitializeAsync(), _ => CanDiscover);
+        Discover = Command(_ => ffmpeg is null ? InitializeAsync() : WorkAsync(RefreshDevicesAsync),
+            _ => !busy && !shutdown.IsCancellationRequested && (ffmpeg is not null || CanDiscover));
         Browse = Command(_ => BrowseAsync(), _ => CanDiscover);
-        Probe = Command(p => ProbeAsync((CameraRow)p!), p => CanDiscover && ffmpeg is not null &&
-            p is CameraRow row && attached.Contains(row.DeviceId));
+        Probe = Command(p => ProbeAsync((CameraRow)p!), p => !busy && ffmpeg is not null &&
+            p is CameraRow { Editable: true } row && attached.Contains(row.DeviceId));
         Start = Command(p => StartRows(p is CameraRow row ? [row] : Cameras.Where(c => c.Enabled).ToArray()),
             p => !busy && ffmpeg is not null && (p is CameraRow row ? row.Enabled && row.Editable && attached.Contains(row.DeviceId) :
-                Cameras.Any(c => c.Enabled && c.Editable && attached.Contains(c.DeviceId))));
+                Cameras.Any(c => c.Enabled && c.Editable)));
         Stop = Command(p => StopRows(p is CameraRow row ? [row] : Cameras),
             p => p is CameraRow row ? row.Operation is { IsCancellationRequested: false } :
                 Cameras.Any(c => c.Operation is { IsCancellationRequested: false }));
@@ -215,9 +222,12 @@ internal sealed class MainViewModel : Observable
     {
         var devices = await ffmpeg!.DevicesAsync(shutdown.Token);
         var savedAudio = Cameras.ToDictionary(c => c.DeviceId, c => c.Audio, StringComparer.OrdinalIgnoreCase);
+        attachedAudio.Clear();
+        attachedAudio.UnionWith(devices.Where(d => d.IsAudio).Select(d => d.Id));
         AudioDevices = new[] { new AudioChoice(null, Text("NoAudio")) }.Concat(
             devices.Where(d => d.IsAudio).Select(d => new AudioChoice(d.Id, d.Name)))
-            .Concat(savedAudio.Values.OfType<AudioChoice>().Where(a => a.Id is not null))
+            .Concat(savedAudio.Values.OfType<AudioChoice>().Where(a => a.Id is not null && !attachedAudio.Contains(a.Id))
+                .Select(a => new AudioChoice(a.Id, a.Id!)))
             .DistinctBy(a => a.Id, StringComparer.OrdinalIgnoreCase).ToArray();
 
         attached.Clear();
@@ -232,7 +242,8 @@ internal sealed class MainViewModel : Observable
         }
         foreach (var row in Cameras)
         {
-            row.Audio = AudioDevices.FirstOrDefault(a => a.Id == savedAudio.GetValueOrDefault(row.DeviceId)?.Id);
+            row.Audio = AudioDevices.FirstOrDefault(a => StringComparer.OrdinalIgnoreCase.Equals(a.Id, savedAudio.GetValueOrDefault(row.DeviceId)?.Id));
+            row.ValidationError = null;
             UpdateStatus(row);
         }
         Notify(attached.Count == 0 ? "NoCameras" : "Ready");
@@ -244,7 +255,9 @@ internal sealed class MainViewModel : Observable
         var previous = row.Mode;
         var modes = await ffmpeg!.ModesAsync(row.DeviceId, shutdown.Token);
         row.Modes = modes;
-        row.Mode = previous is not null && modes.Contains(previous) ? previous : modes.FirstOrDefault();
+        row.Mode = previous is null ? modes.FirstOrDefault(m => !m.IsInferred) :
+            modes.FirstOrDefault(m => m.Width == previous.Width && m.Height == previous.Height &&
+                m.Fps == previous.Fps && m.Format == previous.Format && m.IsCodec == previous.IsCodec);
         Notify(modes.Count == 0 ? "NoModes" : "Ready");
     });
 
@@ -253,6 +266,11 @@ internal sealed class MainViewModel : Observable
         var row = new CameraRow(camera);
         row.PropertyChanged += (_, e) =>
         {
+            if (e.PropertyName is nameof(CameraRow.Path) or nameof(CameraRow.Mode) or nameof(CameraRow.Bitrate) or nameof(CameraRow.Audio))
+            {
+                row.ValidationError = null;
+                UpdateStatus(row);
+            }
             if (e.PropertyName is nameof(CameraRow.Enabled) or nameof(CameraRow.Bitrate) or nameof(CameraRow.Audio))
             {
                 Changed(nameof(Bandwidth));
@@ -266,28 +284,32 @@ internal sealed class MainViewModel : Observable
 
     private void StartRows(CameraRow[] rows)
     {
-        try
+        var candidates = rows.Where(row => row.Editable).ToArray();
+        var failed = false;
+        Endpoint endpoint;
+        try { endpoint = CurrentEndpoint(); }
+        catch (ArgumentException)
         {
-            var plans = new List<(CameraRow Row, string[] Arguments)>();
-            var endpoint = CurrentEndpoint();
-            var credentials = new Credentials(PublishUser, PublishPassword);
-            var occupied = Cameras.Where(c => c.Operation is not null).Select(c => c.Snapshot()).ToList();
-            foreach (var row in rows.Where(c => c.Editable))
-            {
-                var camera = row.Snapshot();
-                if (!attached.Contains(camera.DeviceId)) throw new ArgumentException("Disconnected");
-                if (occupied.Any(c => c.Path == camera.Path || c.DeviceId.Equals(camera.DeviceId, StringComparison.OrdinalIgnoreCase)))
-                    throw new ArgumentException("DuplicateStream");
-                if (camera.AudioId is not null && occupied.Any(c => c.AudioId is not null))
-                    throw new ArgumentException("DuplicateAudio");
-                plans.Add((row, Streaming.Arguments(camera, endpoint, credentials)));
-                occupied.Add(camera);
-            }
-            foreach (var plan in plans)
-                StartRow(plan.Row, plan.Arguments);
-            Notify("Ready");
+            // Let the planner report the common endpoint error on each otherwise valid row.
+            endpoint = new Endpoint(Host, Port: 0);
         }
-        catch (ArgumentException exception) { Notify(exception.Message); }
+        var active = Cameras.Where(row => !row.Editable).Select(row => row.Snapshot()).ToArray();
+        var decisions = StartPlanning.Plan(candidates.Select(row => row.Snapshot()), active,
+            attached, attachedAudio, endpoint, new Credentials(PublishUser, PublishPassword));
+        foreach (var (row, decision) in candidates.Zip(decisions))
+        {
+            row.ValidationError = decision.Error;
+            if (decision.Arguments is { } arguments)
+                StartRow(row, arguments);
+            else
+            {
+                failed = true;
+                UpdateStatus(row);
+                AddLog((Cameras.IndexOf(row) + 1).ToString(CultureInfo.InvariantCulture), decision.Error!);
+            }
+        }
+        Notify(failed ? "ReviewRows" : "Ready");
+        CommandManager.InvalidateRequerySuggested();
     }
 
     private void StartRow(CameraRow row, string[] arguments)
@@ -295,7 +317,11 @@ internal sealed class MainViewModel : Observable
         var operation = CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
         row.Own(operation);
         Changed(nameof(CanEditEndpoint));
-        row.Frames = "—";
+        row.Progress = null;
+        row.LastError = null;
+        row.State = StreamState.Starting;
+        UpdateStatus(row);
+        UpdateMetrics(row);
         var supervisor = new Supervisor(ffmpeg!);
         var rowNumber = (Cameras.IndexOf(row) + 1).ToString(CultureInfo.InvariantCulture);
         row.Completion = RunRowAsync();
@@ -310,20 +336,44 @@ internal sealed class MainViewModel : Observable
                         if (!operation.IsCancellationRequested || state == StreamState.Idle)
                         {
                             row.State = state;
+                            if (state == StreamState.Starting)
+                                row.LastError = null;
+                            if (state != StreamState.Running)
+                            {
+                                row.Progress = null;
+                                UpdateMetrics(row);
+                            }
                             UpdateStatus(row);
                             AddLog(rowNumber, state.ToString());
                         }
                     }),
-                    frames => OnUi(() => { if (!operation.IsCancellationRequested) row.Frames = frames; }),
-                    code => OnUi(() => AddLog(rowNumber, code)), operation.Token));
+                    progress => OnUi(() =>
+                    {
+                        if (operation.IsCancellationRequested) return;
+                        row.Progress = progress;
+                        UpdateMetrics(row);
+                    }),
+                    code => OnUi(() =>
+                    {
+                        if (code is not "FfmpegWarning" && !code.StartsWith("FFmpeg exit: ", StringComparison.Ordinal))
+                            row.LastError = code;
+                        AddLog(rowNumber, code);
+                    }), operation.Token));
             }
-            catch (Exception) { AddLog(rowNumber, "ProcessError"); row.State = StreamState.Failed; }
+            catch (Exception)
+            {
+                row.LastError = "ProcessError";
+                AddLog(rowNumber, "ProcessError");
+                row.State = StreamState.Failed;
+            }
             finally
             {
                 if (operation.IsCancellationRequested) row.State = StreamState.Idle;
                 row.Own(null);
                 Changed(nameof(CanEditEndpoint));
                 operation.Dispose();
+                row.Progress = null;
+                UpdateMetrics(row);
                 UpdateStatus(row);
                 CommandManager.InvalidateRequerySuggested();
             }
@@ -448,8 +498,40 @@ internal sealed class MainViewModel : Observable
     private static void OnUi(Action action) => Application.Current.Dispatcher.Invoke(action);
     private string Text(string key) => Texts.Get(key, Language);
     private void Notify(string code) { noticeCode = code; Notice = Text(code); }
-    private void UpdateStatus(CameraRow row) => row.Status = Text(
-        row.State == StreamState.Idle && !attached.Contains(row.DeviceId) ? "Disconnected" : row.State.ToString());
+    private void UpdateStatus(CameraRow row)
+    {
+        var camera = row.Snapshot();
+        var code = row.Operation is not null ? row.State.ToString() :
+            !attached.Contains(row.DeviceId) ? "Disconnected" :
+            camera.AudioId is not null && !attachedAudio.Contains(camera.AudioId) ? "MissingAudio" :
+            row.ValidationError ?? row.State.ToString();
+        row.Status = Text(code);
+        row.FailureDetail = code == nameof(StreamState.Failed) && row.LastError is { } error ? Text(error) : "";
+    }
+
+    private void UpdateMetrics(CameraRow row)
+    {
+        if (row.Progress is not { } progress)
+        {
+            row.Metrics = "";
+            return;
+        }
+        var culture = CultureInfo.GetCultureInfo(Language);
+        var values = new List<string>();
+        Add("Frames", progress.Frame);
+        Add("MetricFps", progress.Fps);
+        Add("MetricBitrate", progress.BitrateKbps);
+        Add("MetricSpeed", progress.Speed);
+        Add("MetricDup", progress.DuplicateFrames);
+        Add("MetricDrop", progress.DroppedFrames);
+        row.Metrics = values.Count == 0 ? "" : Text("Metrics") + "  ·  " + string.Join("  ·  ", values);
+
+        void Add(string key, IFormattable? value)
+        {
+            if (value is not null)
+                values.Add($"{Text(key)} {value.ToString(value is long ? "0" : "0.##", culture)}");
+        }
+    }
 
     private void AddLog(string path, string code)
     {
@@ -465,7 +547,11 @@ internal sealed class MainViewModel : Observable
     {
         foreach (var (key, value) in Texts.Values) Application.Current.Resources[key] = Language == "ru" ? value.Ru : value.En;
         Notify(noticeCode);
-        foreach (var row in Cameras) UpdateStatus(row);
+        foreach (var row in Cameras)
+        {
+            UpdateStatus(row);
+            UpdateMetrics(row);
+        }
         RefreshLog();
         Changed(nameof(Bandwidth));
         if (AudioDevices.Count > 0)

@@ -40,6 +40,20 @@ public static class DirectShow
 
             Add(min);
             Add(max);
+            // A range for a fixed resolution is evidence for candidates, not proof of driver support.
+            if (min.Groups[1].Value == max.Groups[1].Value && min.Groups[2].Value == max.Groups[2].Value &&
+                int.TryParse(min.Groups[1].Value, out var width) && int.TryParse(min.Groups[2].Value, out var height) &&
+                width > 0 && height > 0 &&
+                double.TryParse(min.Groups[3].Value, CultureInfo.InvariantCulture, out var lower) &&
+                double.TryParse(max.Groups[3].Value, CultureInfo.InvariantCulture, out var upper))
+            {
+                foreach (var fps in new[] { 15, 20, 25, 30 })
+                {
+                    if (fps > lower && fps < upper)
+                        modes.Add(new CaptureMode(width, height, fps.ToString(CultureInfo.InvariantCulture),
+                            format.Groups[2].Value, format.Groups[1].Value == "vcodec", IsInferred: true));
+                }
+            }
 
             void Add(Match match)
             {
@@ -51,7 +65,8 @@ public static class DirectShow
                         format.Groups[2].Value, format.Groups[1].Value == "vcodec"));
             }
         }
-        return modes.Distinct().OrderByDescending(m => (long)m.Width * m.Height)
+        return modes.OrderBy(m => m.IsInferred).DistinctBy(m => (m.Width, m.Height,
+                double.Parse(m.Fps, CultureInfo.InvariantCulture), m.Format, m.IsCodec)).OrderByDescending(m => (long)m.Width * m.Height)
             .ThenByDescending(m => double.Parse(m.Fps, CultureInfo.InvariantCulture)).ToArray();
     }
 }

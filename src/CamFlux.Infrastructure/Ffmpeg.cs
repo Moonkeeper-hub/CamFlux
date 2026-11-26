@@ -116,27 +116,28 @@ public sealed class Ffmpeg(string executable) : IStreamRunner
         }
     }
 
-    public async Task<int> RunAsync(string[] arguments, Action<string> progress, Action<string> diagnostic, CancellationToken cancellation)
+    public async Task<int> RunAsync(string[] arguments, Action<StreamProgress> progress, Action<string> diagnostic, CancellationToken cancellation)
     {
         using var watchdog = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         watchdog.CancelAfter(TimeSpan.FromSeconds(45));
         var token = watchdog.Token;
         using var process = Start(arguments);
-        var lastFrame = 0;
+        long lastFrame = 0;
+        var parser = new ProgressParser();
         var stdout = DrainAsync(process.StandardOutput, line =>
         {
-            if (line.StartsWith("frame=", StringComparison.Ordinal) &&
-                int.TryParse(line.AsSpan(6).Trim(), out var frame) && frame > lastFrame)
+            if (parser.Read(line) is not { } snapshot) return;
+            if (snapshot.Frame is long frame && frame > lastFrame)
             {
                 lastFrame = frame;
                 watchdog.CancelAfter(TimeSpan.FromSeconds(30));
-                progress(frame.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
+            progress(snapshot);
         }, token);
         string? lastDiagnostic = null;
         var stderr = DrainAsync(process.StandardError, line =>
         {
-            var code = Classify(line);
+            var code = FfmpegDiagnostics.Describe(line);
             if (code == lastDiagnostic) return;
             lastDiagnostic = code;
             diagnostic(code);
@@ -188,16 +189,5 @@ public sealed class Ffmpeg(string executable) : IStreamRunner
     {
         while (await reader.ReadLineAsync(token).ConfigureAwait(false) is { } line)
             handle(line);
-    }
-
-    // Map stderr to fixed diagnostic codes. FFmpeg can print credentials or a URL in arbitrary messages.
-    internal static string Classify(string line)
-    {
-        if (line.Contains("reject", StringComparison.OrdinalIgnoreCase)) return "Rejected";
-        if (line.Contains("timed out", StringComparison.OrdinalIgnoreCase)) return "Timeout";
-        if (line.Contains("connection", StringComparison.OrdinalIgnoreCase)) return "Connection";
-        if (line.Contains("[dshow", StringComparison.OrdinalIgnoreCase)) return "Capture";
-        if (line.Contains("x264", StringComparison.OrdinalIgnoreCase)) return "Encoder";
-        return "FfmpegWarning";
     }
 }
